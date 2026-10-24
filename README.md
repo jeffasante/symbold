@@ -8,6 +8,8 @@ contains the runtime that executes such programs: a dependency-free C99
 interpreter, its WebAssembly build, and a minimal browser UI where you draw a
 digit and see which instructions were executed.
 
+**Try it in the browser: https://jeffasante.github.io/symbold/**
+
 | | |
 |---|---|
 | MNIST test accuracy (10,000 images) | 92.66% |
