@@ -36,18 +36,19 @@ symbold answers with a short list of yes/no questions about the image. Here is
 the full path for the first test image, which is a 7:
 
 ```
-    0  row_ink[25] = 3    > 0 ?  yes   there is ink near the bottom
- 1132  hole_area   = 0    > 1 ?  no    there is no closed loop
- 1133  px[14,12]   = 0    > 0 ?  no    the centre is empty
- 1134  px[16,11]   = 0    > 0 ?  no
- 1135  px[13,13]   = 0    > 0 ?  no
- 1136  px[15,12]   = 0    > 0 ?  no
- 1137  px[17,10]   = 0    > 0 ?  no
- 1138  col_runs[14] = 2   > 2 ?  no    column 14 has at most 2 pieces of ink
- 1139  bbox_width  = 16   > 7 ?  yes   the digit is wide
- 1143  row_runs[17] = 1   > 2 ?  no
- 1144  cell[3,3]   = 0    > 8 ?  no
- 1145  answer 7
+step  question                 answer
+   0  row_ink[25]  =  3 > 0 ?  yes   ink near the bottom
+1132  hole_area    =  0 > 1 ?  no    no closed loop
+1133  px[14,12]    =  0 > 0 ?  no    centre is empty
+1134  px[16,11]    =  0 > 0 ?  no
+1135  px[13,13]    =  0 > 0 ?  no
+1136  px[15,12]    =  0 > 0 ?  no
+1137  px[17,10]    =  0 > 0 ?  no
+1138  col_runs[14] =  2 > 2 ?  no
+1139  bbox_width   = 16 > 7 ?  yes   digit is wide
+1143  row_runs[17] =  1 > 2 ?  no
+1144  cell[3,3]    =  0 > 8 ?  no
+1145  answer 7
 ```
 
 (`px[r,c]` is one pixel, `row_ink[r]` counts ink in row `r`, `cell[i,j]`
