@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>symbold</title>
+<style>
+  body { font: 15px/1.4 system-ui, sans-serif; margin: 2rem auto; max-width: 640px; padding: 0 1rem; color: #222; }
+  h1 { font-size: 1.2rem; margin: 0 0 .25rem; }
+  .muted { color: #777; font-size: .85rem; }
+  .row { display: flex; gap: 1.5rem; align-items: flex-start; margin-top: 1rem; flex-wrap: wrap; }
+  #pad { background: #000; border-radius: 6px; touch-action: none; cursor: crosshair; }
+  #seen { width: 112px; height: 112px; image-rendering: pixelated; border: 1px solid #ccc; }
+  #label { font-size: 5rem; font-weight: 600; line-height: 1; min-height: 5rem; }
+  button { font: inherit; padding: .35rem .8rem; margin-right: .4rem; }
+  #error { color: #b00020; }
+</style>
+</head>
+<body>
+<h1>symbold</h1>
+<div class="muted" id="status">loading…</div>
+<div class="row">
+  <canvas id="pad" width="280" height="280" aria-label="Draw a digit"></canvas>
+  <div>
+    <div id="label" aria-live="polite"></div>
+    <div id="detail" class="muted"></div>
+    <p class="muted">Program input (pixels ≥ 128)</p>
+    <canvas id="seen" width="28" height="28"></canvas>
+  </div>
+</div>
+<p>
+  <button id="clear">Clear</button>
+  <button id="sample">MNIST test sample</button>
+</p>
+<div id="error" role="alert"></div>
+
+<script type="module">
+import { createRuntime } from "./symbold.js";
+
+const MODEL = "../models/tree.sdp";
+const WASM = "./symbold.wasm";
+const TEST_IMAGES = "../samples/mnist-test-500.u8";
+const TEST_LABELS = "../samples/mnist-test-500.labels";
+
+const $ = (id) => document.getElementById(id);
+const pad = $("pad"), ctx = pad.getContext("2d", { willReadFrequently: true });
+
+async function fetchBytes(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
+  return new Uint8Array(await r.arrayBuffer());
+}
+
+// Same normalisation as MNIST: fit the ink into 20x20, then centre its mass in 28x28.
+function toMnist() {
+  const { data, width, height } = ctx.getImageData(0, 0, pad.width, pad.height);
+  let x0 = width, y0 = height, x1 = -1, y1 = -1;
+  for (let y = 0; y < height; y++)
+    for (let x = 0; x < width; x++)
+      if (data[(y * width + x) * 4] > 0) {
+        if (x < x0) x0 = x; if (x > x1) x1 = x;
+        if (y < y0) y0 = y; if (y > y1) y1 = y;
+      }
+  if (x1 < 0) return null;
+  const w = x1 - x0 + 1, h = y1 - y0 + 1, s = 20 / Math.max(w, h);
+  const sw = Math.max(1, Math.round(w * s)), sh = Math.max(1, Math.round(h * s));
+  const tmp = new OffscreenCanvas(sw, sh), t = tmp.getContext("2d");
+  t.imageSmoothingQuality = "high";
+  t.drawImage(pad, x0, y0, w, h, 0, 0, sw, sh);
+  const small = t.getImageData(0, 0, sw, sh).data;
+  let m = 0, mx = 0, my = 0;
+  for (let y = 0; y < sh; y++)
+    for (let x = 0; x < sw; x++) {
+      const v = small[(y * sw + x) * 4];
+      m += v; mx += v * x; my += v * y;
+    }
+  const ox = Math.round(14 - mx / m), oy = Math.round(14 - my / m);
+  const img = new Uint8Array(784);
+  for (let y = 0; y < sh; y++)
+    for (let x = 0; x < sw; x++) {
+      const X = x + ox, Y = y + oy;
+      if (X >= 0 && X < 28 && Y >= 0 && Y < 28) img[Y * 28 + X] = small[(y * sw + x) * 4];
+    }
+  return img;
+}
+
+function showSeen(img) {
+  const c = $("seen").getContext("2d"), out = c.createImageData(28, 28);
+  for (let i = 0; i < 784; i++) {
+    const v = img && img[i] >= 128 ? 0 : 255;
+    out.data.set([v, v, v, 255], i * 4);
+  }
+  c.putImageData(out, 0, 0);
+}
+
+function showResult(img, rt, truth) {
+  showSeen(img);
+  if (!img) { $("label").textContent = ""; $("detail").textContent = ""; return; }
+  const { label, cost } = rt.predict(img);
+  $("label").textContent = label === 255 ? "?" : String(label);
+  $("detail").textContent = `${cost} instructions executed`
+    + (truth === undefined ? "" : ` · true label ${truth}`);
+}
+
+function clearPad() {
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, pad.width, pad.height);
+}
+
+async function main() {
+  const rt = await createRuntime(await fetchBytes(WASM));
+  const n = rt.loadProgram(await fetchBytes(MODEL));
+  $("status").textContent = `${MODEL.split("/").pop()} · ${n} instructions · running in WebAssembly`;
+
+  clearPad();
+  ctx.strokeStyle = "#fff";
+  ctx.lineWidth = 22;
+  ctx.lineCap = ctx.lineJoin = "round";
+  let drawing = false;
+  pad.addEventListener("pointerdown", (e) => {
+    drawing = true;
+    pad.setPointerCapture(e.pointerId);
+    ctx.beginPath();
+    ctx.moveTo(e.offsetX, e.offsetY);
+    ctx.lineTo(e.offsetX, e.offsetY);
+    ctx.stroke();
+  });
+  pad.addEventListener("pointermove", (e) => {
+    if (!drawing) return;
+    ctx.lineTo(e.offsetX, e.offsetY);
+    ctx.stroke();
+    showResult(toMnist(), rt);
+  });
+  const end = () => { if (drawing) { drawing = false; showResult(toMnist(), rt); } };
+  pad.addEventListener("pointerup", end);
+  pad.addEventListener("pointercancel", end);
+  $("clear").onclick = () => { clearPad(); showResult(null, rt); };
+
+  let test = null;
+  $("sample").onclick = async () => {
+    try {
+      test ??= { images: await fetchBytes(TEST_IMAGES), labels: await fetchBytes(TEST_LABELS) };
+      const i = Math.floor(Math.random() * test.labels.length);
+      const img = test.images.slice(i * 784, (i + 1) * 784);
+      const big = new OffscreenCanvas(28, 28), b = big.getContext("2d"), d = b.createImageData(28, 28);
+      for (let k = 0; k < 784; k++) d.data.set([img[k], img[k], img[k], 255], k * 4);
+      b.putImageData(d, 0, 0);
+      clearPad();
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(big, 0, 0, pad.width, pad.height);
+      showResult(img, rt, test.labels[i]);
+    } catch (e) {
+      $("error").textContent = `Cannot load MNIST samples (${e.message}).`;
+    }
+  };
+}
+
+main().catch((e) => {
+  $("status").textContent = "";
+  $("error").textContent = `${e.message}. Build with: make -C c wasm`;
+});
+</script>
+</body>
+</html>

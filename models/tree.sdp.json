@@ -1,0 +1,9 @@
+{
+  "method": "decision-tree",
+  "lambda": 2.1544346900318823e-05,
+  "max_depth": 24,
+  "min_samples_leaf": 1,
+  "min_confidence": 0.0,
+  "n_train": 50000,
+  "grown_size": 4755
+}
